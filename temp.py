@@ -1,78 +1,265 @@
+from seleniumbase import Driver
 import time
-from playwright.sync_api import sync_playwright
+import random
 
-# Configuration variables
-WAIT_TIME_SECONDS = 300  # 5 minutes
+# A custom exception to control the flow of the bot
+class BotControlException(Exception):
+    pass
 
-def run_vfs_bot(playwright):
-    # Connect to the already running Chrome browser via debugging port
-    print("Connecting to the existing browser...")
+def human_delay():
+    # Pauses the script for a random decimal amount of seconds to mimic human hesitation
+    delay = random.uniform(1.2, 3.5)
+    time.sleep(delay)
+
+def inject_control_panel(driver):
+    # JavaScript to inject a floating control panel with Stop and Restart buttons
+    js_code = """
+    if (!document.getElementById('yalla-visa-panel')) {
+        let panel = document.createElement('div');
+        panel.id = 'yalla-visa-panel';
+        panel.style.position = 'fixed';
+        panel.style.top = '20px';
+        panel.style.right = '20px';
+        panel.style.zIndex = '999999';
+        panel.style.backgroundColor = 'white';
+        panel.style.padding = '10px';
+        panel.style.border = '2px solid #ccc';
+        panel.style.borderRadius = '8px';
+        panel.style.display = 'flex';
+        panel.style.gap = '10px';
+        panel.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+        
+        // Stop Button
+        let stopBtn = document.createElement('button');
+        stopBtn.id = 'yalla-stop-btn';
+        stopBtn.innerHTML = '🛑 Stop Bot';
+        stopBtn.style.cssText = 'padding:10px 15px; background-color:#dc3545; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold; font-size:14px;';
+        stopBtn.onclick = function() { 
+            this.setAttribute('data-action', 'stop'); 
+            this.innerHTML = 'Stopping...'; 
+        };
+        
+        // Restart Button
+        let restartBtn = document.createElement('button');
+        restartBtn.id = 'yalla-restart-btn';
+        restartBtn.innerHTML = '🔄 Restart Process';
+        restartBtn.style.cssText = 'padding:10px 15px; background-color:#ffc107; color:black; border:none; border-radius:5px; cursor:pointer; font-weight:bold; font-size:14px;';
+        restartBtn.onclick = function() { 
+            this.setAttribute('data-action', 'restart'); 
+            this.innerHTML = 'Restarting...'; 
+        };
+        
+        panel.appendChild(stopBtn);
+        panel.appendChild(restartBtn);
+        document.body.appendChild(panel);
+    }
+    """
     try:
-        browser = playwright.chromium.connect_over_cdp("http://localhost:9222")
+        driver.execute_script(js_code)
+    except Exception:
+        pass # Ignore errors if the page is currently reloading
+
+def get_button_action(driver):
+    # Checks the HTML attributes to see if a button was clicked
+    try:
+        stop_clicked = driver.execute_script("return document.getElementById('yalla-stop-btn')?.getAttribute('data-action');")
+        if stop_clicked == 'stop':
+            return 'stop'
+        
+        restart_clicked = driver.execute_script("return document.getElementById('yalla-restart-btn')?.getAttribute('data-action');")
+        if restart_clicked == 'restart':
+            return 'restart'
+    except Exception:
+        pass
+    return None
+
+def smart_wait(seconds, driver):
+    # Replaces time.sleep(). Checks the UI buttons every 0.5 seconds while waiting.
+    for _ in range(int(seconds * 2)):
+        action = get_button_action(driver)
+        if action == 'stop':
+            raise BotControlException("STOP")
+        elif action == 'restart':
+            raise BotControlException("RESTART")
+        time.sleep(0.5)
+
+def run_login_sequence(driver, email, password, cookie_pref):
+    vfs_url = "https://visa.vfsglobal.com/egy/en/nld/login"
+    
+    print("\n--- Starting Login Sequence ---")
+    print(f"Opening VFS Global: {vfs_url}")
+    driver.uc_open_with_reconnect(vfs_url, reconnect_time=6)
+
+    print("Injecting Control Panel...")
+    inject_control_panel(driver)
+
+    print("Waiting for cookie banner...")
+    smart_wait(4, driver) 
+    
+    # 1. Handle Cookie Consent
+    pref = cookie_pref.strip().lower()
+    try:
+        if pref == "all":
+            driver.click('button#onetrust-accept-btn-handler', timeout=2) 
+            print("Accepted all cookies.")
+        elif pref == "necessary":
+            driver.click('button.ot-pc-refuse-all-handler', timeout=2) 
+            print("Accepted necessary cookies.")
+    except Exception:
+        print("Cookie banner skipped or not found.")
+
+    smart_wait(1, driver)
+
+    # 2. Handle CAPTCHA
+    print("Waiting for CAPTCHA to fully render before clicking...")
+    smart_wait(6, driver) # Give Cloudflare time to build the iframe
+    print("Handling verification/CAPTCHA...")
+    try:
+        driver.uc_gui_click_captcha()
     except Exception as e:
-        print("Failed to connect. Ensure Chrome is running with --remote-debugging-port=9222")
-        return
+        print("CAPTCHA auto-click not needed or failed. Continuing...")
     
-    # Get the first context and the first page (your active tab)
-    context = browser.contexts[0]
-    page = context.pages[0]
+    smart_wait(5, driver)
     
-    print(f"Successfully connected to page: {page.url}")
-    
-    # Ensure we are on the dashboard before starting the loop
-    if "dashboard" not in page.url and "appointment" not in page.url:
-        print("Please navigate to the VFS dashboard first.")
-        return
+    # Re-inject the panel just in case the page refreshed
+    inject_control_panel(driver)
 
-    booking_in_progress = True
-    while booking_in_progress:
+    # 3. Insert Credentials (Angular Fix Applied)
+    print("Inserting credentials carefully for Angular...")
+    try:
+        # Click the field FIRST to trigger focus, then type
+        driver.click('input[formcontrolname="username"]', timeout=5)
+        smart_wait(0.5, driver)
+        driver.type('input[formcontrolname="username"]', email)
+        
+        smart_wait(0.5, driver)
+        
+        driver.click('input[formcontrolname="password"]', timeout=5)
+        smart_wait(0.5, driver)
+        driver.type('input[formcontrolname="password"]', password)
+        
+        # Click the background body to force Angular to register the inputs
+        print("Triggering form validation...")
+        driver.click('body')
+        
+        print("Applying human delay before moving mouse to Sign In...")
+        human_delay()
+        
+        print("Hovering over Sign In button...")
         try:
-            # Click 'Start New Booking' if the button is visible on the dashboard
-            if page.locator("button:has-text('Start New Booking')").is_visible():
-                page.click("button:has-text('Start New Booking')")
-                # Wait for the dropdown menus to render
-                page.wait_for_selector("mat-select", timeout=10000)
-
-            print("Selecting booking categories...")
+            driver.hover('button.mat-btn-lg')
+            smart_wait(0.5, driver)
             
-            # Select Application Centre 
-            page.click("mat-select:nth-child(1)") 
-            page.click("mat-option:has-text('The Netherlands Visa Application Centre, Cairo')")
-
-            # Select Appointment Category
-            page.click("mat-select:nth-child(2)")
-            page.click("mat-option:has-text('Short Stay Visa - Type C')")
-
-            # Select Sub-category (Tourism)
-            page.click("mat-select:nth-child(3)")
-            page.click("mat-option:has-text('Tourism')")
-
-            # Wait briefly for the VFS API to return slot availability
-            time.sleep(3) 
+            print("Clicking Sign In...")
+            driver.click('button.mat-btn-lg', timeout=5) 
+        except Exception:
+            print("Standard Sign In click failed. Forcing click via JavaScript...")
+            driver.execute_script("document.querySelector('button.mat-btn-lg').click();")
             
-            # Check for the specific error message indicating no slots
-            no_slots_msg = page.locator("text='We are sorry but no appointment slots are currently available'")
-            
-            if no_slots_msg.is_visible():
-                print("No slots available. Waiting for 5 minutes...")
-                # Refresh the state by returning to the dashboard
-                page.goto("https://visa.vfsglobal.com/egy/en/nld/dashboard")
-                time.sleep(WAIT_TIME_SECONDS)
-            else:
-                print("Appointment slot found! Proceeding to the next step...")
-                # Click Continue to lock the slot
-                page.click("button:has-text('Continue')")
-                
-                print("Reached the applicant details stage. Stopping the automated loop.")
-                booking_in_progress = False 
+    except Exception as e:
+        print(f"Could not interact with login fields: {e}")
 
+    print("Waiting to verify dashboard...")
+    smart_wait(10, driver)
+    
+    # 4. Dashboard and Start New Booking
+    if "dashboard" in driver.get_current_url():
+        print("Login successful! Reached Dashboard.")
+        print("Waiting for the dashboard UI to fully render...")
+        smart_wait(4, driver) 
+        
+        print("Looking for 'Start New Booking' button...")
+        try:
+            driver.wait_for_text("Start New Booking", timeout=20)
+            print("Text found. Applying human hesitation...")
+            human_delay() 
+            
+            button_selector = 'button:contains("Start New Booking")'
+            print("Moving mouse cursor to 'Start New Booking'...")
+            driver.hover(button_selector)
+            human_delay()
+            
+            driver.click(button_selector, timeout=5)
+            print("Clicked 'Start New Booking' successfully.")
+            smart_wait(5, driver)
+            
         except Exception as e:
-            print(f"An error occurred during the process: {e}")
-            print("Refreshing and retrying in 5 minutes...")
-            page.goto("https://visa.vfsglobal.com/egy/en/nld/dashboard")
-            time.sleep(WAIT_TIME_SECONDS)
+            print("Standard click failed, attempting fallback Angular selector...")
+            try:
+                fallback_xpath = '//*[contains(text(), "Start New Booking")]/ancestor-or-self::button'
+                human_delay() 
+                
+                print("Moving mouse cursor to fallback element...")
+                driver.hover(fallback_xpath)
+                smart_wait(0.5, driver)
+                
+                driver.click(fallback_xpath, timeout=10)
+                print("Clicked 'Start New Booking' using fallback XPath.")
+                smart_wait(5, driver)
+                
+            except Exception as fallback_e:
+                print("Standard clicks failed. Forcing via JavaScript...")
+                try:
+                    js_click = """
+                    let buttons = document.querySelectorAll('button');
+                    for (let btn of buttons) {
+                        if (btn.innerText.includes('Start New Booking')) {
+                            btn.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                    """
+                    if driver.execute_script(js_click):
+                        print("Forced click successful via JavaScript.")
+                    else:
+                        print("Could not find the button via JavaScript.")
+                except Exception as js_e:
+                    print(f"JavaScript click also failed: {js_e}")
+            
+    else:
+        print("Still on login page. Manual intervention may be needed.")
+        
+    print("Sequence complete. Monitoring buttons. You can click Stop or Restart in the browser.")
+    
+    while True:
+        smart_wait(2, driver)
+def main():
+    USER_EMAIL = "sirmohamedh@gmail.com"
+    USER_PASS = "Moed!vsfG@26"
+    COOKIE_CHOICE = "All" 
+    
+    # Initialize the browser once
+    driver = Driver(uc=True, headless=False)
+    
+    # The outer loop allows the "Restart" button to work
+    while True:
+        try:
+            run_login_sequence(driver, USER_EMAIL, USER_PASS, COOKIE_CHOICE)
+            
+        except BotControlException as control:
+            command = str(control)
+            if command == "STOP":
+                print("\n🛑 Stop command received from the browser! Ending the script...")
+                break 
+                
+            elif command == "RESTART":
+                print("\n🔄 Restart command received! Restarting the sequence...")
+                continue 
+                
+        except Exception as e:
+            print(f"\nAn unexpected error occurred: {e}")
+            print("Automatically restarting in 5 seconds... (Click Stop in the browser to cancel)")
+            try:
+                # Give the user 5 seconds to click Stop if it's stuck in an error loop
+                smart_wait(5, driver)
+            except BotControlException as control:
+                if str(control) == "STOP":
+                    print("\n🛑 Stop command received! Ending the script...")
+                    break
+    
+    print("Shutting down the WebDriver...")
+    driver.quit()
 
-    print("Automation paused. Please proceed with the payment gateway manually.")
-
-with sync_playwright() as playwright:
-    run_vfs_bot(playwright)
+if __name__ == "__main__":
+    main()
