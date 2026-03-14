@@ -26,6 +26,7 @@ def human_delay():
 def _small_human_pause(min_s=0.25, max_s=0.8):
     time.sleep(random.uniform(min_s, max_s))
 
+
 def human_click(driver, selector, label="element", timeout=12):
     driver.wait_for_element_visible(selector, timeout=timeout)
 
@@ -61,7 +62,18 @@ def human_click(driver, selector, label="element", timeout=12):
         try:
             driver.uc_click(selector)
         except Exception:
-            driver.click(selector)
+            try:
+                driver.click(selector)
+            except Exception:
+                # Final fallback: Native JS click to punch through invisible overlays
+                driver.js_click(selector)
+
+def human_click_any(driver, selectors, label="element", timeout=12):
+    selector = _wait_for_any_visible(driver, selectors, timeout=timeout)
+    if not selector:
+        raise Exception(f"No visible selector found for {label}.")
+    human_click(driver, selector, label=label, timeout=timeout)
+    return selector
 
 def smart_wait(seconds, driver):
     for _ in range(int(seconds * 2)):

@@ -12,6 +12,7 @@ try:
         human_typing,
         human_typing_any,
         human_click,
+        human_click_any,
         BotControlException,
         fill_appointment_details,
     )
@@ -24,11 +25,13 @@ except ModuleNotFoundError:
         human_typing,
         human_typing_any,
         human_click,
+        human_click_any,
         BotControlException,
         fill_appointment_details,
     )
     from elements import inject_control_panel
     from __init__ import *
+
 
 def run_login_sequence(driver, email, password, cookie_pref):
     print("\n--- Starting Login Sequence ---")
@@ -123,28 +126,52 @@ def run_login_sequence(driver, email, password, cookie_pref):
 
     if "dashboard" in driver.get_current_url():
         print("Login successful! Reached Dashboard.")
-        smart_wait(5, driver)
+        print("Waiting for the dashboard UI to render...")
+        smart_wait(8, driver) 
 
-        print("Looking for 'Start New Booking' text...")
-        try:
-            target_selector = "contains:Start New Booking"
-
-            driver.wait_for_element_visible(target_selector, timeout=20)
-            print("Element is fully visible on screen. Applying human hesitation...")
-            human_delay()
-
-            print("Approaching 'Start New Booking' with human-like motion...")
-            smart_wait(1.5, driver)
+        print("Initiating Active Polling Loop for 'Start New Booking'...")
+        
+        transition_successful = False
+        
+        # ACTIVE POLLING LOOP: Continuously fire JS clicks until the URL leaves the dashboard
+        for attempt in range(15):
+            current_url = driver.get_current_url()
+            
+            # If the URL no longer contains "dashboard", the click worked and we moved pages
+            if "dashboard" not in current_url:
+                print("\nURL transitioned successfully! Leaving dashboard.")
+                transition_successful = True
+                break
+                
+            print(f"Click Attempt {attempt + 1}: Firing JS overrides...")
+            
+            # Method 1: SeleniumBase Native JS Click
             try:
-                human_click(driver, target_selector, label="Start New Booking", timeout=10)
-                print("Clicked 'Start New Booking' with human-like click.")
+                driver.js_click('//button[contains(normalize-space(), "Start New Booking")]')
             except Exception:
-                print("Human click failed. Trying tag-agnostic JS click as fallback...")
-                driver.js_click(target_selector)
-                print("Clicked 'Start New Booking' via JS fallback.")
+                pass
+                
+            # Method 2: Raw DOM Javascript Execution
+            aggressive_js = """
+            let btns = document.getElementsByTagName('button');
+            for(let i=0; i<btns.length; i++){
+                if(btns[i].innerText.includes('Start New Booking') || btns[i].textContent.includes('Start New Booking')){
+                    btns[i].click();
+                    return true;
+                }
+            }
+            return false;
+            """
+            try:
+                driver.execute_script(aggressive_js)
+            except Exception:
+                pass
+                
+            # Pause to allow the VFS server to process the click and change the URL
+            smart_wait(1.5, driver) 
 
-        except Exception as fallback_e:
-            print(f"All standard and JS clicks failed: {fallback_e}")
+        if not transition_successful:
+            print("All 15 polling attempts failed to trigger a page transition.")
             raise BotControlException("BOOKING_BUTTON_FAILED")
 
         # --- ERROR CHECK BLOCK: Post-Click ---
@@ -155,18 +182,18 @@ def run_login_sequence(driver, email, password, cookie_pref):
             smart_wait(5, driver)
             raise BotControlException("RESTART")
 
-        # --- Wait for the URL transition ---
-        print("Waiting for the Application Details page to load...")
+        # --- Wait for the Application Details page to fully load ---
+        print("Waiting for the Application Details page to render...")
         try:
-            for _ in range(30): 
+            for _ in range(30):
                 if "application-detail" in driver.get_current_url():
-                    print("URL changed successfully. Proceeding to form.")
+                    print("Verified target URL.")
                     break
                 time.sleep(0.5)
         except Exception:
             pass
 
-        smart_wait(3, driver) 
+        smart_wait(3, driver)
 
         # 5. Execute Form Filling
         print("Proceeding to fill appointment details...")
