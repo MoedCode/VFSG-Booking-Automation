@@ -26,7 +26,6 @@ def human_delay():
 def _small_human_pause(min_s=0.25, max_s=0.8):
     time.sleep(random.uniform(min_s, max_s))
 
-
 def human_click(driver, selector, label="element", timeout=12):
     driver.wait_for_element_visible(selector, timeout=timeout)
 
@@ -45,13 +44,11 @@ def human_click(driver, selector, label="element", timeout=12):
     _small_human_pause(0.3, 0.9)
 
     try:
-        # Some SeleniumBase builds expose move_to_element
         driver.move_to_element(selector)
         _small_human_pause(0.3, 0.8)
     except Exception:
         pass
 
-    # Click with slight jitter to feel less robotic
     try:
         driver.click_with_offset(
             selector,
@@ -65,7 +62,6 @@ def human_click(driver, selector, label="element", timeout=12):
             try:
                 driver.click(selector)
             except Exception:
-                # Final fallback: Native JS click to punch through invisible overlays
                 driver.js_click(selector)
 
 def human_click_any(driver, selectors, label="element", timeout=12):
@@ -120,7 +116,6 @@ def human_typing(driver, selector, text):
     driver.clear(selector)
     smart_wait(0.5, driver)
 
-    # Type each character individually using send_keys
     for char in text:
         driver.send_keys(selector, char)
         time.sleep(random.uniform(0.08, 0.25))
@@ -130,7 +125,6 @@ def human_typing_any(driver, selectors, text, label="field"):
     if not selector:
         raise Exception(f"No visible selector found for {label}.")
 
-    # First attempt: human-like typing
     try:
         human_typing(driver, selector, text)
         current_value = driver.get_attribute(selector, "value")
@@ -139,7 +133,6 @@ def human_typing_any(driver, selectors, text, label="field"):
     except Exception:
         pass
 
-    # Second attempt: SeleniumBase type
     try:
         driver.type(selector, text)
         current_value = driver.get_attribute(selector, "value")
@@ -148,42 +141,7 @@ def human_typing_any(driver, selectors, text, label="field"):
     except Exception:
         pass
 
-    # Final attempt: direct JS set with events
     if _js_set_value(driver, selector, text):
         return selector
 
     raise Exception(f"Failed to type into {label} using selector: {selector}")
-
-def fill_appointment_details(driver, details):
-    print("\n--- Starting Appointment Details Form ---")
-    smart_wait(5, driver) 
-
-    for question, answer in details.items():
-        print(f"Attempting to select: '{answer}'...")
-        try:
-            clean_question = question.replace("*", "").strip()
-            dropdown_xpath = f'//mat-form-field[contains(., "{clean_question}")]//mat-select'
-            
-            driver.wait_for_element_visible(dropdown_xpath, timeout=15)
-            driver.hover(dropdown_xpath)
-            human_delay()
-            driver.click(dropdown_xpath)
-            
-            smart_wait(1, driver) 
-
-            option_xpath = f'//mat-option//span[contains(text(), "{answer}")]'
-            
-            driver.wait_for_element_visible(option_xpath, timeout=10)
-            driver.hover(option_xpath)
-            human_delay()
-            driver.click(option_xpath)
-            
-            print(f"Successfully selected: {answer}")
-            print("Waiting for the next field to synchronise...")
-            smart_wait(4, driver) 
-
-        except Exception as e:
-            print(f"Failed to process the field '{clean_question}': {e}")
-            raise Exception(f"Form filling failed at: {clean_question}")
-
-    print("All appointment details filled successfully!")
