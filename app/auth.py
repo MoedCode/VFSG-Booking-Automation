@@ -9,8 +9,9 @@ try:
         human_typing_any,
         human_click,
         human_click_any,
-        BotControlException
+        BotControlException,
     )
+
     # Import from the new standalone file
     from app.appointment import fill_appointment_details
     from app.element import inject_control_panel
@@ -22,8 +23,9 @@ except ModuleNotFoundError:
         human_typing_any,
         human_click,
         human_click_any,
-        BotControlException
+        BotControlException,
     )
+
     # Import from the new standalone file
     from appointment import fill_appointment_details
     from elements import inject_control_panel
@@ -52,10 +54,10 @@ def run_login_sequence(driver, email, password, cookie_pref):
     pref = cookie_pref.strip().lower()
     try:
         if pref == "all":
-            driver.click('button#onetrust-accept-btn-handler', timeout=2)
+            driver.click("button#onetrust-accept-btn-handler", timeout=2)
             print("Accepted all cookies.")
         elif pref == "necessary":
-            driver.click('button.ot-pc-refuse-all-handler', timeout=2)
+            driver.click("button.ot-pc-refuse-all-handler", timeout=2)
             print("Accepted necessary cookies.")
     except Exception:
         print("Cookie banner skipped or not found.")
@@ -98,13 +100,13 @@ def run_login_sequence(driver, email, password, cookie_pref):
         smart_wait(1, driver)
 
         print("Triggering form validation...")
-        driver.click('body')
+        driver.click("body")
 
         human_delay()
 
         print("Preparing to click Sign In with human-like motion...")
         smart_wait(1.2, driver)
-        human_click(driver, 'button.mat-btn-lg', label="Sign In button", timeout=8)
+        human_click(driver, "button.mat-btn-lg", label="Sign In button", timeout=8)
 
     except Exception as e:
         print(f"Could not interact with login fields securely: {e}")
@@ -124,30 +126,32 @@ def run_login_sequence(driver, email, password, cookie_pref):
     if "dashboard" in driver.get_current_url():
         print("Login successful! Reached Dashboard.")
         print("Waiting for the dashboard UI to render...")
-        smart_wait(8, driver) 
+        smart_wait(8, driver)
 
         print("Initiating Active Polling Loop for 'Start New Booking'...")
-        
+
         transition_successful = False
-        
+
         # ACTIVE POLLING LOOP: Continuously fire JS clicks until the URL leaves the dashboard
         for attempt in range(15):
             current_url = driver.get_current_url()
-            
+
             # If the URL no longer contains "dashboard", the click worked and we moved pages
             if "dashboard" not in current_url:
                 print("\nURL transitioned successfully! Leaving dashboard.")
                 transition_successful = True
                 break
-                
+
             print(f"Click Attempt {attempt + 1}: Firing JS overrides...")
-            
+
             # Method 1: SeleniumBase Native JS Click
             try:
-                driver.js_click('//button[contains(normalize-space(), "Start New Booking")]')
+                driver.js_click(
+                    '//button[contains(normalize-space(), "Start New Booking")]'
+                )
             except Exception:
                 pass
-                
+
             # Method 2: Raw DOM Javascript Execution
             aggressive_js = """
             let btns = document.getElementsByTagName('button');
@@ -163,9 +167,9 @@ def run_login_sequence(driver, email, password, cookie_pref):
                 driver.execute_script(aggressive_js)
             except Exception:
                 pass
-                
+
             # Pause to allow the VFS server to process the click and change the URL
-            smart_wait(1.5, driver) 
+            smart_wait(1.5, driver)
 
         if not transition_successful:
             print("All 15 polling attempts failed to trigger a page transition.")
@@ -173,7 +177,9 @@ def run_login_sequence(driver, email, password, cookie_pref):
 
         # --- ERROR CHECK BLOCK: Post-Click ---
         if driver.is_element_visible('a:contains("Go back to home")'):
-            print("Detected a VFS Server Error (500, 504, or 429) after clicking 'Start New Booking'.")
+            print(
+                "Detected a VFS Server Error (500, 504, or 429) after clicking 'Start New Booking'."
+            )
             print("Attempting to recover by clicking 'Go back to home'...")
             driver.click('a:contains("Go back to home")')
             smart_wait(5, driver)
@@ -202,7 +208,9 @@ def run_login_sequence(driver, email, password, cookie_pref):
     else:
         print("Still on login page. Manual intervention may be needed.")
 
-    print("Sequence complete. Monitoring buttons. You can click Stop or Restart in the browser.")
+    print(
+        "Sequence complete. Monitoring buttons. You can click Stop or Restart in the browser."
+    )
 
     while True:
         smart_wait(2, driver)

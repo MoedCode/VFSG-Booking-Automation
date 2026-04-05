@@ -2,59 +2,60 @@
 
 from __init__ import *
 from browser_manager import *
-# Configuration
+from gui import VfsDashboard
+import threading
+import sys
 
-
+# ريموت كنترول للـ GUI
+gui_app = None 
 
 def main():
-    global driver
-    print("--- SeleniumBase Browser Controller ---")
-    print("Commands: \\e (Exit All), \\ec (Close Chrome), \\o [url] (Open)")
+    global gui_app, driver
+    print("--- VFS Browser Controller ---")
+
+    def run_gui():
+        global gui_app
+        gui_app = VfsDashboard()
+        gui_app.mainloop()
+
+    # تشغيل الـ GUI في الخلفية
+    gui_thread = threading.Thread(target=run_gui)
+    gui_thread.daemon = True # مهم جداً عشان يقفل مع الـ terminal
+    gui_thread.start()
 
     while True:
         try:
             raw_input = input("\nAction >> ").strip().lower()
-            if not raw_input:
-                continue
+            if not raw_input: continue
 
-            # EXIT EVERYTHING
-            if raw_input in ["\\e", "exit", "exit script"]:
+            # الخروج النهائي
+            if raw_input in ["\\e", "exit"]:
                 close_browser()
+                if gui_app:
+                    gui_app.after(0, gui_app.full_exit) # اؤمر الـ GUI يقفل نفسه بأمان
                 print("Goodbye!")
-                sys.exit(0)
+                break 
 
-            # CLOSE BROWSER ONLY
-            elif raw_input in ["\\ec", "exit chrome"]:
-                if driver:
-                    close_browser()
+            # إغلاق الـ GUI فقط
+            elif raw_input in ["\\eg", "exit gui"]:
+                if gui_app:
+                    # بنستخدم after(0) عشان نبعت الأمر للـ Thread بتاع الـ GUI
+                    gui_app.after(0, gui_app.destroy) 
+                    print("GUI closed.")
                 else:
-                    print("[!] No active session.")
+                    print("GUI is not running.")
 
-            # OPEN BROWSER
+            # فتح الكروم
             elif raw_input.startswith(("\\oc", "open chrome")):
-                parts = raw_input.split()
-                # logic: if using "\o google.com" -> url is parts[1]
-                # logic: if using "open chrome google.com" -> url is parts[2]
-                url_to_open = None
-                if raw_input.startswith("\\oc") and len(parts) > 1:
-                    url_to_open = parts[1]
-                elif raw_input.startswith("open chrome") and len(parts) > 2:
-                    url_to_open = parts[2]
-
-                open_browser(url_to_open if url_to_open else DEFAULT_URL)
-                # time.sleep(7)
-                print(f"=> {handle_cookies()} :", end="\t")
-            else:
-
-                print(f"[?] Unknown command: {raw_input}")
+                # كود الفتح بتاعك زي ما هو...
+                open_browser(DEFAULT_URL)
+                handle_cookies()
 
         except KeyboardInterrupt:
-            print("\n[User] Force quit detected.")
             close_browser()
-            sys.exit(0)
-        except Exception as e:
-            print(f"\n[Runtime Error] {e}")
+            break
 
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()
