@@ -44,7 +44,13 @@ dashboard_config = {
         },
         "option_tag": "mat-option",
         "continue_btn": "button.btn-brand-orange"
-    }
+    },
+        "mapped_fields" : [
+        ("Choose your Application Centre*", 'mat-select[formcontrolname="centerCode"]'),
+        ("Choose your appointment category*", 'mat-select[formcontrolname="selectedSubvisaCategory"]'),
+        ("Choose your sub-category*", 'mat-select[formcontrolname="visaCategoryCode"]'),
+    ]
+    
 }
 }
 auth_config_old={

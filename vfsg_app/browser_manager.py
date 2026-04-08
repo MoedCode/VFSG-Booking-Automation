@@ -61,7 +61,7 @@ def handle_cookies():
     global driver
     choice = cookies["choice"]
     btn_id = cookies["buttons"]["id"][choice]
-    human_delay(5, 8)
+    human_delay(8, 10)
     try:
         # بنر VFS بيستخدم ID محدد وهو onetrust-accept-btn-handler
         if driver.is_element_visible("#onetrust-accept-btn-handler"):
@@ -78,6 +78,7 @@ def handle_cookies():
 def login_to_vfs():
     global driver
     print("[System] Attempting to login...")
+    human_delay(3, 5)
     try:
         # 1. Handle Email Input
         found_email = False
@@ -148,16 +149,21 @@ def start_new_booking():
 
     # 1. Wait for any of the selectors to become visible (Timeout: 30 seconds)
     # This handles the 'empty page' delay you mentioned.
-    timeout = 30
+    timeout = 50
     start_time = time.time()
 
     found_selector = None
 
-    while time.time() - start_time < timeout:
+    # while time.time() - start_time < timeout:
+    i = 0
+    for i in range(0, 45):
         for selector in dashboard_config["selectors"]["start_booking"]:
             if driver.is_element_visible(selector):
+                print(f"\n\n function <start_new_booking> {i} trials \n")
+
                 found_selector = selector
                 break
+            time.sleep(1)
         if found_selector:
             break
         time.sleep(1)  # Check every second
@@ -172,7 +178,7 @@ def start_new_booking():
     try:
         print(f"[System] Dashboard loaded. Clicking: {found_selector}")
         # Use js_click if a normal click is blocked by the Material ripple effect
-        human_delay(1, 2)
+
 
         driver.js_click(found_selector)
         return True
@@ -202,74 +208,71 @@ def fill_appointment():
 def fill_appointment_details():
     global driver
     print("[System] Filling Appointment Details...")
-    selectors = dashboard_config["booking_config"]["selectors"]
 
+    fields = dashboard_config["booking_config"]["mapped_fields"]
+    print(fields)
     try:
-        field_map = [
-            ("Choose your Application Centre*", selectors["fields"]["center"]),
-            ("Choose your appointment category*", selectors["fields"]["category"]),
-            ("Choose your sub-category*", selectors["fields"]["subcategory"]),
-        ]
-
-        for label, selector in field_map:
+        for label, selector in fields:
             target_value = appointment_details.get(label)
             if not target_value:
                 continue
-
-            print(f"[Action] Opening dropdown for: {label}")
-
-            # 1. Wait for and click the dropdown
+            print(f"[Action] Processing: {label} -> {target_value}")
+            # 1. Wait for and scroll to the dropdown
             driver.wait_for_element_visible(selector, timeout=15)
-            # Use normal click first to trigger Angular events; fallback to js_click
-            try:
-                driver.click(selector)
-            except:
-                driver.js_click(selector)
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block: 'center'});",
+                driver.find_element(selector),
+            )
+            human_delay(1, 2)
 
-            # 2. Wait for the overlay container to appear
-            # VFS options usually appear in a global overlay div
-            human_delay(1.0, 1.8)
+            # 2. Click to open dropdown
+            driver.js_click(selector)
 
-            # 3. Find and click the option
-            # We use a more robust XPath that looks for the mat-option itself
+            # 3. CRITICAL: Wait for the Material Overlay to appear
+            # We wait for the 'cdk-overlay-container' which holds the options
+            driver.wait_for_element_visible(".cdk-overlay-container", timeout=5)
+            human_delay(1, 1.5)
+
+            # 4. Use a 'Normalize-Space' XPath
+            # This ignores extra spaces/newlines that VFS often adds to 'Tourism'
             option_xpath = (
-                f"//mat-option//span[contains(normalize-space(), '{target_value}')]"
+                f"//mat-option[contains(normalize-space(.), '{target_value}')]"
             )
 
-            try:
-                # Wait specifically for the option to be clickable
-                driver.wait_for_element_clickable(option_xpath, timeout=10)
-                print(f"[Action] Clicking option: {target_value}")
-                driver.click(option_xpath)
+            if driver.is_element_present(option_xpath):
+                print(f"[Action] Found {target_value}. Clicking...")
+                # Scroll the option into view inside the dropdown list
+                driver.execute_script(
+                    "arguments[0].scrollIntoView({block: 'nearest'});",
+                    driver.find_element(option_xpath),
+                )
+                driver.js_click(option_xpath)
 
-                # CRITICAL: Wait for the dropdown to close and the site to process the choice
-                # (VFS often reloads the sub-category list based on the category)
-                human_delay(2.0, 3.0)
+                # 5. Wait for VFS to refresh the next dropdown
+                print(f"[System] Selected {target_value}. Waiting for site refresh...")
+                human_delay(2.5, 4)
+            else:
+                print(f"[Warning] Could not find option: {target_value}")
+                # Fallback for Sub-category
+                if "sub-category" in label.lower():
+                    print("[System] Fallback: Clicking first available option...")
+                    driver.js_click("mat-option")
+                    human_delay(2, 3)
 
-            except Exception:
-                print(f"[Warning] Could not find or click option: {target_value}")
-                # Optional: print available options for debugging
-                # options = driver.find_elements("tag name", "mat-option")
-                # print(f"Available: {[opt.text for opt in options]}")
+        # 6. Final Check for Continue Button
+        cont_btn = "button.btn-brand-orange"
+        if driver.is_element_visible(cont_btn):
+            # Check if button is disabled (VFS uses the 'aria-disabled' or 'disabled' attribute)
+            is_disabled = driver.get_attribute(cont_btn, "disabled")
+            if is_disabled == "true" or is_disabled == "":
+                # Sometimes 'disabled' exists without a value
+                print("[Error] Form invalid (Continue button disabled).")
+                return False
 
-        # 4. Handle the Continue Button
-        cont_btn = selectors["continue_btn"]
-        driver.wait_for_element_visible(cont_btn, timeout=10)
-
-        # Check if the button is still disabled
-        is_disabled = driver.get_attribute(cont_btn, "disabled")
-
-        if is_disabled == "true" or is_disabled == "":
-            print(
-                "[Error] Form is invalid (Continue button disabled). Retrying final selection..."
-            )
-            # Sometimes a quick re-click of the last item helps trigger the UI
-            return False
-
-        print("[System] Form valid. Clicking Continue...")
-        driver.js_click(cont_btn)
-        return True
+            print("[System] Success! Clicking Continue.")
+            driver.js_click(cont_btn)
+            return True
 
     except Exception as e:
-        print(f"[Error] Failed to fill form: {e}")
+        print(f"[Error] Failed during form filling: {e}")
     return False
