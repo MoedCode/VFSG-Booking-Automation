@@ -94,6 +94,26 @@ auth_config = {
         ]
     }
 }
+
+log_files_headers = [
+    "Date (dd/mm/yyyy)",
+    "Time (hh:mm:ss)",
+    "Tourism",
+    "Business",
+    "Family/Friend Visit",
+    "Other (Medical, Cultural and sports, Entry Visa)",
+]
+tracking_config = {
+    "main_target": "Tourism",
+    "alt_categories": [
+        "Business",
+        "Family/Friend Visit",
+        "Other (Medical, Cultural and sports, Entry Visa)",
+    ],
+    "alert_selector": 'div[role="alert"]',
+    "base_log_dir": "logs_archive",
+}
+
 cmd = """
 open chrome https://visa.vfsglobal.com/egy/en/nld/login
 PYTHONPATH=$PYTHONPATH:/home/pro-eng/pyenv-0/lib/python3.12/site-packages pyinstaller --noconfirm --onefile --windowed --name "VFS_Booking_Bot" --add-data "vfsg_app/__init__.py:vfsg_app" --add-data "vfsg_app/browser_manager.py:vfsg_app" --collect-all seleniumbase --collect-all customtkinter vfsg_app/gui.py

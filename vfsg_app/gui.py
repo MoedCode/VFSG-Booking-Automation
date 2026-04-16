@@ -2,7 +2,7 @@
 
 import os
 import sys
-from browser_manager import login_to_vfs, start_new_booking, fill_appointment_details
+from browser_manager import login_to_vfs, start_new_booking, fill_appointment_form
 
 # هذه الوظيفة تجعل البرنامج يعرف مساره الحقيقي حتى بعد الضغط (EXE)
 def resource_path(relative_path):
@@ -127,7 +127,7 @@ class VfsDashboard(ctk.CTk):
             self.update_status("Booking Started! Filling Form...", "#3498DB")
             
             # NEW: Call the form filler
-            if fill_appointment_details():
+            if fill_appointment_form():
                 self.update_status("Form Submitted! Moving to next step.", "#2ECC71")
             else:
                 self.update_status("Form Error! Check console.", "#E74C3C")

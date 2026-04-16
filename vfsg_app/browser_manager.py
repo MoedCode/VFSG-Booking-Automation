@@ -149,21 +149,16 @@ def start_new_booking():
 
     # 1. Wait for any of the selectors to become visible (Timeout: 30 seconds)
     # This handles the 'empty page' delay you mentioned.
-    timeout = 50
+    timeout = 30
     start_time = time.time()
 
     found_selector = None
 
-    # while time.time() - start_time < timeout:
-    i = 0
-    for i in range(0, 45):
+    while time.time() - start_time < timeout:
         for selector in dashboard_config["selectors"]["start_booking"]:
             if driver.is_element_visible(selector):
-                print(f"\n\n function <start_new_booking> {i} trials \n")
-
                 found_selector = selector
                 break
-            time.sleep(1)
         if found_selector:
             break
         time.sleep(1)  # Check every second
@@ -178,7 +173,7 @@ def start_new_booking():
     try:
         print(f"[System] Dashboard loaded. Clicking: {found_selector}")
         # Use js_click if a normal click is blocked by the Material ripple effect
-
+        human_delay(1, 2)
 
         driver.js_click(found_selector)
         return True
@@ -187,92 +182,97 @@ def start_new_booking():
         return False
 
 
-"""
-def fill_appointment():
+import time
+import random
+
+# Your requested configuration structure
+booking_config = {
+    # Selector to verify the form actually loaded
+    "form_container": "mat-card.form-card",
+    "form_header": "h1:contains('Appointment Details')",
+    # List of dictionaries for the fields and your desired answers
+    "selections": [
+        {
+            "label_name": "Choose your Application Centre",
+            "dropdown_selector": "mat-select[formcontrolname='centerCode']",
+            "target_value": "The Netherlands Visa Application Centre, Cairo",
+        },
+        {
+            "label_name": "Choose your appointment category",
+            "dropdown_selector": "mat-select[formcontrolname='selectedSubvisaCategory']",
+            "target_value": "Short Stay Visa - Type C",
+        },
+        {
+            "label_name": "Choose your sub-category",
+            "dropdown_selector": "mat-select[formcontrolname='visaCategoryCode']",
+            "target_value": "Tourism",
+        },
+    ],
+}
+
+
+def fill_appointment_form():
     global driver
-    selectors = dashboard_config["booking_config"]["selectors"]
-    field_map = [
-                ("Choose your Application Centre*", selectors["fields"]["center"]),
-                ("Choose your appointment category*", selectors["fields"]["category"]),
-                ("Choose your sub-category*", selectors["fields"]["subcategory"])
-                
-            ]
-    for label, selector in field_map:
-        target_value = appointment_details.get(label)
-        if not target_value:
-            print(f"Not Match {f} ")
-            continue
-"""
+    print("[System] Attempting to fill the Appointment Form...")
 
-
-def fill_appointment_details():
-    global driver
-    print("[System] Filling Appointment Details...")
-
-    fields = dashboard_config["booking_config"]["mapped_fields"]
-    print(fields)
     try:
-        for label, selector in fields:
-            target_value = appointment_details.get(label)
-            if not target_value:
-                continue
-            print(f"[Action] Processing: {label} -> {target_value}")
-            # 1. Wait for and scroll to the dropdown
-            driver.wait_for_element_visible(selector, timeout=15)
+        # STEP 1: Ensure the Booking Form Exists
+        # We wait for the specific <mat-card> that holds the form
+        print("[Action] Waiting for the booking form to appear...")
+        driver.wait_for_element_visible(booking_config["form_container"], timeout=15)
+
+        # Optional double-check: verify the header text
+        if driver.is_element_visible(booking_config["form_header"]):
+            print("[Success] 'Appointment Details' form detected.")
+        else:
+            print("[Warning] Form container found, but header is missing.")
+
+        # STEP 2: Loop through each requested field in order
+        for item in booking_config["selections"]:
+            label = item["label_name"]
+            selector = item["dropdown_selector"]
+            target = item["target_value"]
+
+            print(f"\n[Action] Processing: {label}")
+
+            # Wait for the specific dropdown field to be visible in the DOM
+            driver.wait_for_element_visible(selector, timeout=10)
+
+            # Center the element to avoid "Click Intercepted" errors
             driver.execute_script(
                 "arguments[0].scrollIntoView({block: 'center'});",
                 driver.find_element(selector),
             )
-            human_delay(1, 2)
+            time.sleep(0.5)  # Brief pause after scrolling
 
-            # 2. Click to open dropdown
+            # STEP 3: Open the dropdown menu
+            print(f"  -> Opening dropdown...")
             driver.js_click(selector)
 
-            # 3. CRITICAL: Wait for the Material Overlay to appear
-            # We wait for the 'cdk-overlay-container' which holds the options
-            driver.wait_for_element_visible(".cdk-overlay-container", timeout=5)
-            human_delay(1, 1.5)
+            # STEP 4: Wait for the Angular Overlay (The list of choices) to appear
+            # This is critical. The options don't exist until this pane appears.
+            driver.wait_for_element_visible(".cdk-overlay-pane", timeout=10)
 
-            # 4. Use a 'Normalize-Space' XPath
-            # This ignores extra spaces/newlines that VFS often adds to 'Tourism'
-            option_xpath = (
-                f"//mat-option[contains(normalize-space(.), '{target_value}')]"
-            )
+            # STEP 5: Click the desired option
+            # We use an XPath with normalize-space to ensure exact text matching
+            # even if VFS adds weird spaces or line breaks in their HTML
+            option_xpath = f"//mat-option[contains(normalize-space(.), '{target}')]"
 
-            if driver.is_element_present(option_xpath):
-                print(f"[Action] Found {target_value}. Clicking...")
-                # Scroll the option into view inside the dropdown list
-                driver.execute_script(
-                    "arguments[0].scrollIntoView({block: 'nearest'});",
-                    driver.find_element(option_xpath),
-                )
-                driver.js_click(option_xpath)
+            print(f"  -> Selecting option: {target}")
+            driver.wait_for_element_visible(option_xpath, timeout=5)
+            driver.js_click(option_xpath)
 
-                # 5. Wait for VFS to refresh the next dropdown
-                print(f"[System] Selected {target_value}. Waiting for site refresh...")
-                human_delay(2.5, 4)
-            else:
-                print(f"[Warning] Could not find option: {target_value}")
-                # Fallback for Sub-category
-                if "sub-category" in label.lower():
-                    print("[System] Fallback: Clicking first available option...")
-                    driver.js_click("mat-option")
-                    human_delay(2, 3)
+            # STEP 6: Apply the requested human delay
+            print("  -> Applying human delay...")
+            human_delay(1, 2)
 
-        # 6. Final Check for Continue Button
-        cont_btn = "button.btn-brand-orange"
-        if driver.is_element_visible(cont_btn):
-            # Check if button is disabled (VFS uses the 'aria-disabled' or 'disabled' attribute)
-            is_disabled = driver.get_attribute(cont_btn, "disabled")
-            if is_disabled == "true" or is_disabled == "":
-                # Sometimes 'disabled' exists without a value
-                print("[Error] Form invalid (Continue button disabled).")
-                return False
+            # Additional safety: Wait for VFS to process the selection
+            # When you pick a center, the next box is disabled for ~1-2 seconds while it loads categories
+            time.sleep(1.5)
 
-            print("[System] Success! Clicking Continue.")
-            driver.js_click(cont_btn)
-            return True
+        print("\n[Success] All form fields filled successfully!")
+        return True
 
     except Exception as e:
-        print(f"[Error] Failed during form filling: {e}")
-    return False
+        print(f"\n[Critical Error] Failed while interacting with the form:\n{e}")
+        return False
