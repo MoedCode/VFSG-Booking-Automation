@@ -1,0 +1,20 @@
+# Use a Python image that includes Chrome and drivers
+FROM seleniumbase/docker-install-libs:latest
+
+WORKDIR /app
+
+# Copy project files
+COPY . .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# VFS automation usually requires a real-looking display environment
+# Install Xvfb for virtual display (if running non-headless)
+RUN apt-get update && apt-get install -y xvfb
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+
+# Command to run the bot
+CMD ["python", "main_cloud.py"]

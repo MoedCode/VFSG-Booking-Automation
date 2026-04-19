@@ -4,6 +4,7 @@ import os
 import sys
 from browser_manager import login_to_vfs, start_new_booking, fill_appointment_form
 
+
 # هذه الوظيفة تجعل البرنامج يعرف مساره الحقيقي حتى بعد الضغط (EXE)
 def resource_path(relative_path):
     try:
@@ -95,6 +96,45 @@ class VfsDashboard(ctk.CTk):
             command=self.full_exit,
         )
         self.btn_exit_all.pack(pady=10, padx=60, fill="x")
+        # داخل كلاس VfsDashboard في ملف gui.py
+
+        # --- إضافة إطار اختيار الفئة المستهدفة ---
+        self.radio_frame = ctk.CTkFrame(self)
+        self.radio_frame.pack(pady=10, padx=20, fill="x")
+
+        self.cat_label = ctk.CTkLabel(
+            self.radio_frame,
+            text="Target Category to Hunt:",
+            font=("Roboto", 12, "bold"),
+        )
+        self.cat_label.pack(pady=5)
+
+        # المتغير الذي يحمل القيمة المختارة (الافتراضية Tourism)
+        self.target_cat_var = ctk.StringVar(value="Tourism")
+
+        # الفئات الأربعة
+        categories = [
+            ("Tourism", "Tourism"),
+            ("Business", "Business"),
+            ("Family Visit", "Family/Friend Visit"),
+            ("Other", "Other (Medical, Cultural and sports, Entry Visa)"),
+        ]
+
+        for text, value in categories:
+            rb = ctk.CTkRadioButton(
+                self.radio_frame,
+                text=text,
+                variable=self.target_cat_var,
+                value=value,
+                command=self.sync_category,  # وظيفة لتحديث الهدف فوراً
+            )
+            rb.pack(side="top", anchor="w", padx=20, pady=2)
+
+    def sync_category(self):
+        """ """
+        # تحديث الهدف في الإعدادات المشتركة ليقرأه البوت فوراً
+        shared.tracking_config["main_target"] = self.target_cat_var.get()
+        print(f"[GUI] New Hunting Target: {shared.tracking_config['main_target']}")
 
     # --- وظائف التشغيل ---
 
@@ -110,6 +150,12 @@ class VfsDashboard(ctk.CTk):
         shared.user["pwd"] = self.pwd_entry.get()
         url = self.url_entry.get()
 
+        # --- الحل السحري: إجبار تحديث الفئة المستهدفة هنا ---
+        selected_cat = self.target_cat_var.get()
+        shared.tracking_config["main_target"] = selected_cat
+        print(f"\n[System] User Selected Category: {selected_cat}")
+        # ----------------------------------------------------
+
         self.update_status("Launching Stealth Chrome...", "#3498DB")
         open_browser(url)
 
@@ -121,14 +167,25 @@ class VfsDashboard(ctk.CTk):
             self.update_status("Login Successful! Check Browser.", "#2ECC71")
         else:
             self.update_status("Login Failed! Check Selectors.", "#E74C3C")
-
+            return # يفضل إيقاف السكريبت لو فشل تسجيل الدخول
 
         if start_new_booking():
             self.update_status("Booking Started! Filling Form...", "#3498DB")
-            
-            # NEW: Call the form filler
+
+            # استدعاء دالة تعبئة البيانات الأساسية (المركز ونوع الفيزا فقط الآن)
             if fill_appointment_form():
-                self.update_status("Form Submitted! Moving to next step.", "#2ECC71")
+                self.update_status("Base Form Filled. Starting Hunter...", "#2ECC71")
+
+                # استدعاء ملف الصياد
+                from trackiing_loging import run_vfs_monitor
+                self.update_status(f"Hunting Slots in {selected_cat}...", "#E67E22")
+
+                # تشغيل الصياد
+                run_vfs_monitor()
+
+                # بعد أن يجد موعداً ويخرج من دالة الصياد
+                self.update_status("SLOT FOUND! Complete Payment.", "#2ECC71")
+
             else:
                 self.update_status("Form Error! Check console.", "#E74C3C")
         else:

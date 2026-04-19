@@ -4,9 +4,13 @@ import atexit
 from seleniumbase import Driver
 import time
 import random
+from datetime import datetime
+import winsound
 
 
-user = {"email": "sirmohamedh@gmail.com", "pwd": "Moed!vsfG@26"}
+
+user = {"email": "elsalamfurnituremoving@gmail.com", "pwd": "Moed!vsfG@26"}
+user1 = {"email": "sirmohamedh@gmail.com", "pwd": "Moed!vsfG@26"}
 appointment_details = {
     "Choose your Application Centre*": "The Netherlands Visa Application Centre, Cairo",
     "Choose your appointment category*": "Short Stay Visa - Type C",

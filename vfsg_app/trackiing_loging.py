@@ -1,87 +1,87 @@
-# VFSG-Booking-Automation/vfs_app/trackiing_loging.py
-
-import os
-import csv
-import random
 import time
+import random
+import winsound
 from datetime import datetime
 from __init__ import *
-# --- الإعدادات ---
 
 # ---------------------------------------------------------
-# 1. دوال تسجيل اللوجات (بديل الكلاس VFSLogger)
-# ---------------------------------------------------------
-
-
-def get_log_file_path():
-    """تنشئ المجلدات (سنة/شهر) وترجع المسار الكامل لملف اليوم"""
-    now = datetime.now()
-    year_dir = now.strftime("%Y")
-    month_dir = now.strftime("vfsg-logs-month.%m-%Y")
-    file_name = now.strftime("vfsg-logs %d-%m-%Y.csv")
-
-    # إنشاء المسار: logs_archive / 2026 / vfsg-logs-month.04-2026 /
-    full_path = os.path.join(tracking_config["base_log_dir"], year_dir, month_dir)
-    if not os.path.exists(full_path):
-        os.makedirs(full_path)
-
-    return os.path.join(full_path, file_name)
-
-
-def log_vfs_result(category, message):
-    """تكتب النتيجة في ملف الـ CSV الخاص باليوم"""
-    path = get_log_file_path()
-    file_exists = os.path.isfile(path)
-
-    now = datetime.now()
-    date_str = now.strftime("%d/%m/%Y")
-    time_str = now.strftime("%H:%M:%S")
-
-    # تعريف أعمدة الجدول
-
-    # تجهيز السطر (Row) ووضع الرسالة في العمود المناسب للفئة
-    row = {
-        "Date (dd/mm/yyyy)": date_str,
-        "Time (hh:mm:ss)": time_str,
-        "Tourism": message if category == "Tourism" else "",
-        "Business": message if category == "Business" else "",
-        "Family/Friend Visit": message if "Family" in category else "",
-        "Other (Medical, Cultural and sports, Entry Visa)": (
-            message if "Other" in category else ""
-        ),
-    }
-
-    # الكتابة في الملف (Append)
-    with open(path, mode="a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=log_files_headers)
-        if not file_exists:
-            writer.writeheader()  # كتابة العناوين لو الملف جديد
-        writer.writerow(row)
-
-
-# ---------------------------------------------------------
-# 2. دوال المتصفح والفحص
+# دوال التنبيه وتسجيل الخروج
 # ---------------------------------------------------------
 
 
-def pay_appointment():
-    """هذه الدالة يتم استدعاؤها عند إيجاد موعد في Tourism"""
-    print("\n[!!!] SUCCESS: Appointment Found! Starting Payment Logic...")
-    pass
+def alert_user():
+    """تشغيل صوت تنبيه متكرر لجذب انتباه العميل"""
+    print("\n[!!!] ATTENTION: SLOT FOUND! [!!!]")
+    for _ in range(5):
+        winsound.Beep(1000, 500)  # تردد 1000 هرتز لمدة نصف ثانية
+        time.sleep(0.1)
+
+
+def log_out():
+    """تسجيل الخروج من الحساب في حال عدم وجود مواعيد"""
+    global driver
+    print(
+        f"[{datetime.now().strftime('%H:%M:%S')}] [System] No slots found after switch process. Logging out..."
+    )
+    try:
+        # 1. الضغط على القائمة المنسدلة "My Account"
+        driver.wait_for_element_visible("a#navbarDropdown", timeout=5)
+        driver.js_click("a#navbarDropdown")
+        time.sleep(1)
+
+        # 2. الضغط على زر "Logout"
+        logout_btn = "a.dropdown-item.bg-brand-orange"
+        driver.wait_for_element_visible(logout_btn, timeout=5)
+        driver.js_click(logout_btn)
+
+        print("[System] Logged out successfully.")
+        time.sleep(3)
+    except Exception as e:
+        print(f"[Error] Failed to log out: {e}")
+
+
+def handle_success():
+    """يتم استدعاؤها عند إيجاد الموعد: تضغط استمرار، تنبه العميل، وتنتظر 3-5 دقائق"""
+    global driver
+    try:
+        # الضغط على زر Continue (الزر البرتقالي في نهاية الفورم)
+        continue_btn = "button.btn-brand-orange"
+        driver.wait_for_element_visible(continue_btn, timeout=5)
+        driver.js_click(continue_btn)
+        print("[Action] Clicked 'Continue' button successfully!")
+    except Exception as e:
+        print(f"[Error] Could not click 'Continue': {e}")
+
+    # تنبيه العميل
+    alert_user()
+    print("[System] Please complete the manual steps (Payment/Details).")
+
+    # انتظار من 3 إلى 5 دقائق (180 إلى 300 ثانية) كما طلبت
+    wait_time = random.randint(180, 300)
+    print(
+        f"[System] Pausing bot for {wait_time // 60} minutes and {wait_time % 60} seconds..."
+    )
+    time.sleep(wait_time)
+    print("[System] Resuming tracking process...")
+
+
+# ---------------------------------------------------------
+# دوال المتصفح والفحص
+# ---------------------------------------------------------
 
 
 def get_alert_content():
     """قراءة نص التنبيه من الصفحة"""
     global driver
     try:
-        driver.wait_for_element_visible(tracking_config["alert_selector"], timeout=7)
+        driver.wait_for_element_visible(tracking_config["alert_selector"], timeout=5)
         return driver.get_text(tracking_config["alert_selector"]).strip()
     except:
-        return "No alert found / Loading error"
+        return "No alert found"
 
 
 def select_visa_subcategory(name):
-    """تغيير الـ Sub-category فقط"""
+    """تغيير الـ Sub-category من القائمة المنسدلة"""
     global driver
     selector = 'mat-select[formcontrolname="visaCategoryCode"]'
     try:
@@ -99,44 +99,80 @@ def select_visa_subcategory(name):
         time.sleep(3)  # انتظار الـ Angular ليحدث البيانات
         return True
     except Exception as e:
-        print(f"Error selecting {name}: {e}")
+        print(f"[Error] Failed to select category '{name}': {e}")
         return False
 
 
 def run_vfs_monitor():
-    """المحرك الرئيسي للفحص والتبديل واللوج"""
+    """المحرك الرئيسي للصيد والتبديل (Switch Process)"""
     global driver
-    print("[System] VFS Continuous Monitor Started...")
+    print("[System] VFS Hunter Started... Listening to GUI Target.")
+
+    all_categories = [
+        "Tourism",
+        "Business",
+        "Family/Friend Visit",
+        "Other (Medical, Cultural and sports, Entry Visa)",
+    ]
 
     while True:
-        # 1. فحص الهدف الأساسي (Tourism)
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Checking: Tourism")
-        if select_visa_subcategory("Tourism"):
-            result = get_alert_content()
+        # قراءة الهدف الحالي من الـ GUI (الإعداد الافتراضي Tourism)
+        target = tracking_config.get("main_target", "Tourism")
+        print(f"\n{'-'*40}")
+        print(f"🎯 HUNTING TARGET: {target}")
+        print(f"{'-'*40}")
 
-            # استدعاء دالة اللوج بدلاً من الكلاس القديم
-            log_vfs_result("Tourism", result)
+        # --- الخطوة 1: الفحص المبدئي للهدف ---
+        select_visa_subcategory(target)
+        initial_alert = get_alert_content()
 
-            if (
-                "no appointment slots" not in result.lower()
-                and "No alert found" not in result
-            ):
-                pay_appointment()
-                break
+        # إذا وجد موعداً للهدف في الفحص الأول
+        if (
+            "no appointment slots" not in initial_alert.lower()
+            and "no alert found" not in initial_alert.lower()
+        ):
+            print(f"[SUCCESS] Slots found immediately for {target}!")
+            handle_success()
+            continue  # يبدأ الدورة من جديد بعد الانتظار 3-5 دقائق
 
-        # 2. التبديل لفئة عشوائية لكسر الكاش
-        random_alt = random.choice(tracking_config["alt_categories"])
-        print(
-            f"[{datetime.now().strftime('%H:%M:%S')}] Switching to (Cache Buster): {random_alt}"
-        )
+        # --- الخطوة 2: عملية التبديل (Switch Process) ---
+        print("[Info] No slots available. Starting Switch Process...")
 
-        if select_visa_subcategory(random_alt):
-            alt_result = get_alert_content()
+        # ترتيب الفئات عشوائياً (مثلاً 1, 4, 2, 3)
+        shuffled_cats = all_categories.copy()
+        random.shuffle(shuffled_cats)
 
-            # استدعاء دالة اللوج للفئة البديلة
-            log_vfs_result(random_alt, alt_result)
+        target_found_in_switch = False
 
-        # 3. انتظار عشوائي قبل العودة لـ Tourism
-        sleep_time = random.randint(30, 60)
-        print(f"[System] Sleeping for {sleep_time}s...")
-        time.sleep(sleep_time)
+        for cat in shuffled_cats:
+            print(f" -> Switching to: {cat}")
+            select_visa_subcategory(cat)
+
+            # انتظار بشري بين 1 إلى 5 ثواني كما طلبت
+            time.sleep(random.uniform(1, 5))
+
+            # نقرأ التنبيه للفئة الحالية
+            current_alert = get_alert_content()
+
+            # نحن نهتم فقط إذا كانت الفئة الحالية في اللفة هي "هدف العميل" ووجدنا فيها موعداً
+            if cat == target:
+                if (
+                    "no appointment slots" not in current_alert.lower()
+                    and "no alert found" not in current_alert.lower()
+                ):
+                    print(f"[SUCCESS] Slots found for {target} during switch process!")
+                    handle_success()
+                    target_found_in_switch = True
+                    break  # نوقف دورة التبديل لأننا وجدنا الموعد
+
+        # --- الخطوة 3: ما بعد عملية التبديل ---
+        if target_found_in_switch:
+            # إذا وجد موعد، يعود لبداية اللوب الرئيسي (بعد أن يكون قد انتظر 3-5 دقائق)
+            continue
+
+        # إذا انتهت عملية التبديل العشوائي (مر على 4 فئات) ولم يجد موعداً للهدف
+        log_out()
+
+        # ملاحظة: بعد تسجيل الخروج، نكسر حلقة البحث لإيقاف البوت.
+        # يجب على العميل إعادة تسجيل الدخول (أو يمكنك برمجة إعادة الدخول لاحقاً).
+        break
