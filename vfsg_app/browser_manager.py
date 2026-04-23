@@ -181,42 +181,46 @@ def start_new_booking():
         print(f"[Error] Failed to click Start Booking: {e}")
         return False
 
+
 def alert_user():
     """إطلاق تنبيه صوتي وبصري عند العثور على موعد."""
-    print("\n" + "!"*40)
+    print("\n" + "!" * 40)
     print("[!!!] ATTENTION: SLOT FOUND! [!!!]")
-    print("!"*40 + "\n")
-    
+    print("!" * 40 + "\n")
+
     # تكرار الصوت 5 مرات لضمان سماعه
     for i in range(5):
         # تردد 1000 هرتز لمدة 500 مللي ثانية
-        winsound.Beep(1000, 500) 
+        winsound.Beep(1000, 500)
         time.sleep(0.2)
+
 
 def log_out():
     """تسجيل الخروج من نظام VFS بطريقة تحاكي العنصر البشري."""
     global driver
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] [System] Initiating logout sequence...")
-    
+    print(
+        f"[{datetime.now().strftime('%H:%M:%S')}] [System] Initiating logout sequence..."
+    )
+
     try:
         # 1. البحث عن قائمة الحساب "My Account" والضغط عليها
         # بناءً على مستندات VFS، يوجد زر للملف الشخصي
         dropdown_selector = "a#navbarDropdown"
         if driver.wait_for_element_visible(dropdown_selector, timeout=10):
             driver.js_click(dropdown_selector)
-            time.sleep(random.uniform(1.0, 2.0)) # تأخير بشري
-            
+            time.sleep(random.uniform(1.0, 2.0))  # تأخير بشري
+
             # 2. الضغط على زر Logout
             logout_btn = "a.dropdown-item.bg-brand-orange"
             if driver.wait_for_element_visible(logout_btn, timeout=5):
                 driver.js_click(logout_btn)
                 print("[System] Clicked Logout. Waiting for redirection...")
-                
+
                 # الانتظار للتأكد من العودة لصفحة تسجيل الدخول
                 time.sleep(random.uniform(3.0, 5.0))
                 print("[Success] Logged out successfully.")
                 return True
-        
+
         print("[Warning] Logout button not found. Session might have already expired.")
         return False
 
@@ -229,6 +233,7 @@ def log_out():
         except:
             pass
         return False
+
 
 # Your requested configuration structure
 booking_config = {
@@ -256,112 +261,120 @@ booking_config = {
 }
 
 
-def fill_appointment_form():
+def fill_appointment_form(max_switches=3):
+    """
+    Fills the initial VFS form and performs a hunting loop.
+    :param max_switches: How many times to try (Target -> Random -> Target)
+    """
+    human_delay(5, 7)
+
     global driver
-    print("[System] Attempting to fill the Appointment Form...")
+    print(f"[System] Starting Appointment Form with {max_switches} search cycles...")
 
     try:
         # STEP 1: Ensure the Booking Form Exists
         print("[Action] Waiting for the booking form to appear...")
         driver.wait_for_element_visible(booking_config["form_container"], timeout=15)
 
-        if driver.is_element_visible(booking_config["form_header"]):
-            print("[Success] 'Appointment Details' form detected.")
-        else:
-            print("[Warning] Form container found, but header is missing.")
-
-        # STEP 2: Fill ONLY the first two fields (Center and Category)
-        base_fields = booking_config["selections"][:2] 
+        # STEP 2: Fill static fields (Center and Main Category)
+        # We do this only once at the start.
+        base_fields = booking_config["selections"][:2]
         for item in base_fields:
             label = item["label_name"]
             selector = item["dropdown_selector"]
             target = item["target_value"]
 
-            print(f"\n[Action] Processing: {label}")
+            print(f"[Action] Selecting {label} -> {target}")
             driver.wait_for_element_visible(selector, timeout=10)
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", driver.find_element(selector))
-            time.sleep(0.5)
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block: 'center'});",
+                driver.find_element(selector),
+            )
 
-            print(f"  -> Opening dropdown...")
             driver.js_click(selector)
             driver.wait_for_element_visible(".cdk-overlay-pane", timeout=10)
 
             option_xpath = f"//mat-option[contains(normalize-space(.), '{target}')]"
-            print(f"  -> Selecting option: {target}")
-            driver.wait_for_element_visible(option_xpath, timeout=5)
+            driver.wait_for_element_visible(option_xpath, timeout=7)
             driver.js_click(option_xpath)
 
-            human_delay(1, 2)
-            time.sleep(1.5)
+            # Wait for VFS loading spinner to disappear
+            time.sleep(2)
+            driver.wait_for_element_not_visible("div.app-loader", timeout=10)
 
-        # STEP 3: Handle the Sub-Category (The Hunting Logic)
-        # قراءة الهدف الحالي من اختيار العميل في الواجهة
+        # --- STEP 3: THE DYNAMIC HUNTING LOOP ---
         target_sub_category = tracking_config.get("main_target", "Tourism")
         sub_category_selector = 'mat-select[formcontrolname="visaCategoryCode"]'
 
-        # دالة مساعدة داخلية لاختيار فئة معينة بسهولة
-        def select_category(cat_name):
+        def select_category_internal(cat_name):
+            """Internal helper for switching sub-categories."""
             print(f"  -> Selecting sub-category: {cat_name}")
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", driver.find_element(sub_category_selector))
+            driver.wait_for_element_visible(sub_category_selector, timeout=10)
             driver.js_click(sub_category_selector)
             driver.wait_for_element_visible(".cdk-overlay-pane", timeout=10)
+
             opt_xpath = f"//mat-option[contains(normalize-space(.), '{cat_name}')]"
-            driver.wait_for_element_visible(opt_xpath, timeout=5)
+            driver.wait_for_element_visible(opt_xpath, timeout=7)
             driver.js_click(opt_xpath)
-            human_delay(1, 2)
-            time.sleep(3) # انتظار الـ Angular لجلب المواعيد
 
-        # دالة مساعدة للتحقق من المواعيد
-        def check_for_slots():
+            # Critical wait for VFS to refresh slots
+            time.sleep(3.5)
+            driver.wait_for_element_not_visible("div.app-loader", timeout=15)
+
+        def check_for_slots_internal():
+            """Internal helper to check if slots exist."""
             try:
-                driver.wait_for_element_visible(tracking_config["alert_selector"], timeout=7)
-                alert_text = driver.get_text(tracking_config["alert_selector"]).strip().lower()
-                if "no appointment slots" not in alert_text and "no alert found" not in alert_text:
-                    return True
+                # Check for red 'No slots' alert
+                if driver.is_element_visible(tracking_config["alert_selector"]):
+                    alert_text = (
+                        driver.get_text(tracking_config["alert_selector"])
+                        .strip()
+                        .lower()
+                    )
+                    if "no appointment slots" in alert_text:
+                        return False
+
+                # If orange 'Continue' button is visible, it's a success
+                return driver.is_element_visible("button.btn-brand-orange")
             except:
-                pass
-            return False
+                return False
 
-        print(f"\n[Action] Processing Sub-Category Hunt for: {target_sub_category}")
+        # --- RUN THE LOOP ---
+        for i in range(1, max_switches + 1):
+            print(f"\n[Hunt] Cycle {i} of {max_switches}")
 
-        # --- المحاولة الأولى: اختيار هدف العميل ---
-        select_category(target_sub_category)
-        
-        if check_for_slots():
-            print(f"[!!!] SUCCESS: Slots found for {target_sub_category}!")
-            driver.wait_for_element_visible("button.btn-brand-orange", timeout=5)
-            driver.js_click("button.btn-brand-orange")
-            print("[Action] Clicked Continue!")
-            alert_user() # استدعاء دالة التنبيه
-            return True
+            # 1. Select the Target
+            select_category_internal(target_sub_category)
 
-        # --- المحاولة الثانية (Cache Busting): إذا لم يجد مواعيد ---
-        print(f"[System] No slots for {target_sub_category}. Performing human-like random switch...")
-        
-        # اختيار فئة عشوائية مختلفة عن هدف العميل
-        alt_cats = [cat for cat in tracking_config["alt_categories"] if cat != target_sub_category]
-        random_alt = random.choice(alt_cats)
-        
-        select_category(random_alt)
-        human_delay(2, 4) # انتظار بشري
+            # 2. Check if slots appeared
+            if check_for_slots_internal():
+                print(f"🔥 [SUCCESS] SLOTS FOUND FOR {target_sub_category}!")
+                alert_user()
+                # Click continue automatically
+                driver.js_click("button.btn-brand-orange")
+                return True
 
-        # العودة لهدف العميل مرة أخرى
-        print(f"[System] Switching back to target: {target_sub_category}...")
-        select_category(target_sub_category)
+            # 3. If not last attempt, switch to random to "refresh" the cache
+            if i < max_switches:
+                alt_cats = [
+                    cat
+                    for cat in tracking_config["alt_categories"]
+                    if cat != target_sub_category
+                ]
+                random_alt = random.choice(alt_cats)
+                print(
+                    f"[Refresh] No slots found. Switching to {random_alt} to reset session..."
+                )
+                select_category_internal(random_alt)
+                human_delay(2, 4)
+            else:
+                print(f"[System] Max switches ({max_switches}) reached.")
 
-        if check_for_slots():
-            print(f"[!!!] SUCCESS: Slots found for {target_sub_category} after switch!")
-            driver.wait_for_element_visible("button.btn-brand-orange", timeout=5)
-            driver.js_click("button.btn-brand-orange")
-            print("[Action] Clicked Continue!")
-            alert_user() # استدعاء دالة التنبيه
-            return True
-
-        # --- الفشل النهائي ---
-        print(f"[System] Still no slots available for {target_sub_category} after switch. Logging out...")
-        log_out() # استدعاء دالة تسجيل الخروج
+        # --- FINAL FAIL ---
+        print(f"[System] No slots found after {max_switches} cycles. Logging out...")
+        log_out()
         return False
 
     except Exception as e:
-        print(f"\n[Critical Error] Failed while interacting with the form:\n{e}")
+        print(f"\n[Critical Error] Form interaction failed: {e}")
         return False

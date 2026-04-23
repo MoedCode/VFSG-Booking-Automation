@@ -9,8 +9,8 @@ import winsound
 
 
 
-user = {"email": "elsalamfurnituremoving@gmail.com", "pwd": "Moed!vsfG@26"}
-user1 = {"email": "sirmohamedh@gmail.com", "pwd": "Moed!vsfG@26"}
+user1 = {"email": "elsalamfurnituremoving@gmail.com", "pwd": "Moed!vsfG@26"}
+user = {"email": "sirmohamedh@gmail.com", "pwd": "Moed!vsfG@26"}
 appointment_details = {
     "Choose your Application Centre*": "The Netherlands Visa Application Centre, Cairo",
     "Choose your appointment category*": "Short Stay Visa - Type C",
