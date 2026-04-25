@@ -1,4 +1,4 @@
-# VFSG-Booking-Automation/vfs_app/browser_manager.py
+# VFSG-Booking-Automation/app/browser_manager.py
 from __init__ import *
 
 

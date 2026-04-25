@@ -1,59 +1,64 @@
 # VFSG-Booking-Automation/app/main.py
 
-from seleniumbase import Driver
+from __init__ import *
+from browser_manager import *
+from gui import VfsDashboard
+import threading
+import sys
 
-# Allow running from project root (python -m app.main) or from app/ (python main.py)
-try:
-    from app.bot_actions import smart_wait, BotControlException
-    from app.auth import run_login_sequence
-    from app.__init__ import user, COOKIE_CHOICE
-except ModuleNotFoundError:
-    from bot_actions import smart_wait, BotControlException
-    from auth import run_login_sequence
-    from __init__ import user, COOKIE_CHOICE
+# ريموت كنترول للـ GUI
+gui_app = None
+
 
 def main():
-    driver = Driver(uc=True, headless=False)
+    global gui_app, driver
+    print("--- VFS Browser Controller ---")
+
+    def run_gui():
+        global gui_app
+        gui_app = VfsDashboard()
+        gui_app.mainloop()
+
+    # تشغيل الـ GUI في الخلفية
+    gui_thread = threading.Thread(target=run_gui)
+    gui_thread.daemon = True  # مهم جداً عشان يقفل مع الـ terminal
+    gui_thread.start()
 
     while True:
         try:
-            run_login_sequence(driver, user["email"], user["pwd"], COOKIE_CHOICE)
-
-        except BotControlException as control:
-            command = str(control)
-            if command == "STOP":
-                print("\n🛑 Stop command received from the browser! Ending the script...")
-                break
-
-            elif command == "RESTART":
-                print("\n🔄 Restart command received! Restarting the sequence...")
+            raw_input = input("\nAction >> ").strip().lower()
+            if not raw_input:
                 continue
 
-            elif command in ["LOGIN_INTERACTION_FAILED", "BOOKING_BUTTON_FAILED"]:
-                print(f"\nFailed to interact securely ({command}). Waiting 15 minutes before retrying to prevent account restriction...")
-                try:
-                    smart_wait(900, driver)
-                except BotControlException as sub_control:
-                    if str(sub_control) == "STOP":
-                        print("\n🛑 Stop command received! Ending the script...")
-                        break
-                    elif str(sub_control) == "RESTART":
-                        continue
+            # الخروج النهائي
+            if raw_input in ["\\e", "exit"]:
+                close_browser()
+                if gui_app:
+                    gui_app.after(0, gui_app.full_exit)  # اؤمر الـ GUI يقفل نفسه بأمان
+                print("Goodbye!")
+                break
 
-        except Exception as e:
-            print(f"\nAn unexpected error occurred: {e}")
-            print("Waiting 15 minutes to prevent IP/User ID ban... (Click Stop in the browser to cancel)")
-            try:
-                smart_wait(900, driver)
-            except BotControlException as control:
-                if str(control) == "STOP":
-                    print("\n🛑 Stop command received! Ending the script...")
-                    break
-                elif str(control) == "RESTART":
-                    continue
-    
-    print("Shutting down the WebDriver...")
-    driver.quit()
+            # إغلاق الـ GUI فقط
+            elif raw_input in ["\\eg", "exit gui"]:
+                if gui_app:
+                    # بنستخدم after(0) عشان نبعت الأمر للـ Thread بتاع الـ GUI
+                    gui_app.after(0, gui_app.destroy)
+                    print("GUI closed.")
+                else:
+                    print("GUI is not running.")
+
+            # فتح الكروم
+            elif raw_input.startswith(("\\oc", "open chrome")):
+                # كود الفتح بتاعك زي ما هو...
+                open_browser(DEFAULT_URL)
+                handle_cookies()
+
+        except KeyboardInterrupt:
+            close_browser()
+            break
+
+    sys.exit(0)
+
 
 if __name__ == "__main__":
     main()
